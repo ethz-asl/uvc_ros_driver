@@ -142,11 +142,6 @@ void uvcROSDriver::initDevice() {
         nh_.advertise<sensor_msgs::CameraInfo>(topic + "camera_info", 1000));
 
     if (i % 2) {
-      cam_rect_pubs_.emplace_back(
-          it_.advertise(prev_topic + "image_rect", kCamQueueSize));
-      cam_disp_pubs_.emplace_back(
-          it_.advertise(prev_topic + "image_depth", kCamQueueSize));
-
       imu_pubs_.emplace_back(
           nh_.advertise<sensor_msgs::Imu>(prev_topic + "imu", kIMUQueueSize));
       imu_pubs_.emplace_back(
@@ -159,11 +154,6 @@ void uvcROSDriver::initDevice() {
       nh_.advertise<sensor_msgs::Imu>("adis_imu", kIMUQueueSize));
 
   info_cams_.resize(n_cameras_);
-
-  pointcloud_pub_ =
-      nh_.advertise<sensor_msgs::PointCloud2>("pointcloud", kCamQueueSize);
-  freespace_pointcloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(
-      "freespace_pointcloud", kCamQueueSize);
 
   // time translator
   constexpr int kSecondsToMicroSeconds = 1e6;
@@ -1106,52 +1096,11 @@ void uvcROSDriver::uvc_cb(uvc_frame_t *frame) {
 
     cam_raw_pubs_[cam_id.left_cam_num].publish(msg_left_image);
     cam_raw_pubs_[cam_id.right_cam_num].publish(msg_right_image);
-  } else {
-    msg_left_image.header.frame_id =
-        "cam_" + std::to_string(cam_id.left_cam_num) + "_corrected_frame";
-    msg_right_image.header.frame_id =
-        "cam_" + std::to_string(cam_id.right_cam_num) + "_disparity_frame";
-
-    // publish images
-    cam_rect_pubs_[cam_id.left_cam_num / 2].publish(msg_left_image);
-    cam_disp_pubs_[cam_id.right_cam_num / 2].publish(msg_right_image);
-
-    if (gen_pointcloud_) {
-      pcl::PointCloud<pcl::PointXYZRGB> pointcloud, freespace_pointcloud;
-      calcPointCloud(images[1], images[0], cam_id.left_cam_num, &pointcloud,
-                     &freespace_pointcloud);
-
-      sensor_msgs::PointCloud2 pointcloud_msg;
-      pcl::toROSMsg(pointcloud, pointcloud_msg);
-      pointcloud_msg.header = msg_left_image.header;
-      pointcloud_pub_.publish(pointcloud_msg);
-
-      sensor_msgs::PointCloud2 freespace_pointcloud_msg;
-      pcl::toROSMsg(freespace_pointcloud, freespace_pointcloud_msg);
-      freespace_pointcloud_msg.header = msg_left_image.header;
-      freespace_pointcloud_pub_.publish(freespace_pointcloud_msg);
-    }
   }
 
   setCameraInfoHeader(info_cams_[cam_id.left_cam_num], width_, height_,
                       frame_time, msg_left_image.header.frame_id);
   cam_info_pubs_[cam_id.left_cam_num].publish(info_cams_[cam_id.left_cam_num]);
-
-  br_.sendTransform(
-      tf::StampedTransform(camera_params_.T_cam_imu[cam_id.left_cam_num],
-                           frame_time, "imu", msg_left_image.header.frame_id));
-
-  if (cam_id.is_raw_images) {
-    setCameraInfoHeader(info_cams_[cam_id.right_cam_num], width_, height_,
-                        frame_time, msg_right_image.header.frame_id);
-
-    cam_info_pubs_[cam_id.right_cam_num].publish(
-        info_cams_[cam_id.right_cam_num]);
-
-    br_.sendTransform(tf::StampedTransform(
-        camera_params_.T_cam_imu[cam_id.right_cam_num], frame_time, "imu",
-        msg_right_image.header.frame_id));
-  }
 
   static uint8_t prev_count = 0;
 
