@@ -104,35 +104,9 @@ int main(int argc, char **argv)
 
 	// initialize device
 	uvc_ros_driver.initDevice();
-
-	// read yaml calibration file from device
-	CameraParameters camParams =
-		loadCustomCameraCalibration(calibration_file_path);
-
-	std::vector<std::pair<int, int>> homography_mapping;
-	// import homograpy mapping from yaml file
-	XmlRpc::XmlRpcValue homography_import;
-	nh.param("homography_mapping", homography_import, homography_import);
-
-	for (int i = 0; i < homography_import.size(); i++) {
-		homography_mapping.push_back(std::make_pair((int)homography_import[i][0],
-					     (int)homography_import[i][1]));
-	}
-
-
-	// set calibration parameters
-	if (camParams.isValid) {
-		uvc_ros_driver.setCalibrationParam(set_calibration);
-		uvc_ros_driver.setUseOfDepthMap(depth_map);
-
-	} else {
-		uvc_ros_driver.setCalibrationParam(0);
-		uvc_ros_driver.setUseOfDepthMap(0);
-	}
-
+	uvc_ros_driver.setCalibrationParam(0);
+	uvc_ros_driver.setUseOfDepthMap(0);
 	uvc_ros_driver.setCalibrationMode(false);
-	uvc_ros_driver.setCameraParams(camParams);
-	uvc_ros_driver.setHomographyMapping(homography_mapping);
 
 	// start device
 	uvc_ros_driver.startDevice();

@@ -1,6 +1,5 @@
 <launch>
   <arg name="numberOfCameras" default="6" />
-  <arg name="cameraConfigFile" default="/media/camera/calibration.yaml" />
 
   <!-- camera node -->
   <node pkg="uvc_ros_driver" name="uvc_camera" type="uvc_ros_driver_node" output="screen">
