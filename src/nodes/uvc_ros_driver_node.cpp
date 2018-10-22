@@ -42,32 +42,6 @@
 
 #include <functional>
 
-// declare helper function
-CameraParameters loadCustomCameraCalibration(const std::string calib_path)
-{
-	CameraParameters cp;
-
-	// load a camera calibration defined in the launch script
-	try {
-		//wait on inital mount of calib path
-		//usleep(2000000);
-		YAML::Node YamlNode = YAML::LoadFile(calib_path);
-
-		if (YamlNode.IsNull()) {
-			ROS_WARN("Continuing without calibration file");
-			cp.isValid = false;
-		}
-
-		cp = parseYaml(YamlNode);
-
-	} catch (YAML::BadFile &e) {
-		ROS_WARN("Continuing without calibration file");
-		cp.isValid = false;
-	}
-
-	return cp;
-}
-
 //void dynamicReconfigureCallback(uvc_ros_driver::UvcDriverConfig& config, uint32_t level)
 //{
   //ROS_INFO("Reconfigure Request: %s %f",

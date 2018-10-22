@@ -46,7 +46,6 @@
 #include <valarray>
 
 // local include
-#include "calib_yaml_interface.h"
 #include "camera_info_helper.h"
 #include "fpga_calibration.h"
 #include "serial_port.h"
@@ -134,7 +133,6 @@ class uvcROSDriver {
   int max_speckle_size_;
   int max_speckle_diff_;
 
-  CameraParameters camera_params_;
   // serial port
   Serial_Port sp_;
   // uvc
@@ -192,13 +190,6 @@ class uvcROSDriver {
 
   uvc_error_t initAndOpenUvc();
   int setParam(const std::string &name, float val);
-  void sendCameraParam(const int camera_number,
-                       const uvc_ros_driver::DistortionModelTypes dtype,
-                       const double fx, const double fy,
-                       const Eigen::Vector2d &p0, const float k1,
-                       const float k2, const float r1, const float r2,
-                       const Eigen::Matrix3d &H);
-  void setCalibration(CameraParameters camParams);
 
   void dynamicReconfigureCallback(uvc_ros_driver::UvcDriverConfig &config,
                                   uint32_t level);
@@ -285,10 +276,6 @@ class uvcROSDriver {
     return camera_config;
   }
 
-  CameraParameters getCameraParams() { return camera_params_; };
-  void setCameraParams(const CameraParameters &camera_params) {
-    camera_params_ = camera_params;
-  };
   void getHomographyMapping(
       std::vector<std::pair<int, int>> &homography_mapping) {
     homography_mapping = homography_mapping_;
