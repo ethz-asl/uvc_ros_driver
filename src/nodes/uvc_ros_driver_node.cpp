@@ -42,32 +42,6 @@
 
 #include <functional>
 
-// declare helper function
-CameraParameters loadCustomCameraCalibration(const std::string calib_path)
-{
-	CameraParameters cp;
-
-	// load a camera calibration defined in the launch script
-	try {
-		//wait on inital mount of calib path
-		//usleep(2000000);
-		YAML::Node YamlNode = YAML::LoadFile(calib_path);
-
-		if (YamlNode.IsNull()) {
-			ROS_WARN("Continuing without calibration file");
-			cp.isValid = false;
-		}
-
-		cp = parseYaml(YamlNode);
-
-	} catch (YAML::BadFile &e) {
-		ROS_WARN("Continuing without calibration file");
-		cp.isValid = false;
-	}
-
-	return cp;
-}
-
 //void dynamicReconfigureCallback(uvc_ros_driver::UvcDriverConfig& config, uint32_t level)
 //{
   //ROS_INFO("Reconfigure Request: %s %f",
@@ -83,7 +57,7 @@ int main(int argc, char **argv)
 	uvc::uvcROSDriver uvc_ros_driver(nh);
 
 	// get params from launch file
-	bool set_calibration, depth_map, calibration_mode, primary_camera_mode;
+	bool set_calibration, depth_map, primary_camera_mode;
 	int number_of_cameras;
 	std::string calibration_file_path;
 	// TODO: check if parameter exist
@@ -91,7 +65,6 @@ int main(int argc, char **argv)
 	nh.getParam("setCalibration", set_calibration);
 	nh.getParam("depthMap", depth_map);
 	nh.getParam("cameraConfigFile", calibration_file_path);
-	nh.getParam("calibrationMode", calibration_mode);
 	nh.getParam("primaryCamMode", primary_camera_mode);
 
 	//force cam number to be even
@@ -105,35 +78,9 @@ int main(int argc, char **argv)
 
 	// initialize device
 	uvc_ros_driver.initDevice();
-
-	// read yaml calibration file from device
-	CameraParameters camParams =
-		loadCustomCameraCalibration(calibration_file_path);
-
-	std::vector<std::pair<int, int>> homography_mapping;
-	// import homograpy mapping from yaml file
-	XmlRpc::XmlRpcValue homography_import;
-	nh.param("homography_mapping", homography_import, homography_import);
-
-	for (int i = 0; i < homography_import.size(); i++) {
-		homography_mapping.push_back(std::make_pair((int)homography_import[i][0],
-					     (int)homography_import[i][1]));
-	}
-
-
-	// set calibration parameters
-	if (camParams.isValid) {
-		uvc_ros_driver.setCalibrationParam(set_calibration);
-		uvc_ros_driver.setUseOfDepthMap(depth_map);
-
-	} else {
-		uvc_ros_driver.setCalibrationParam(0);
-		uvc_ros_driver.setUseOfDepthMap(0);
-	}
-
-	uvc_ros_driver.setCalibrationMode(calibration_mode);
-	uvc_ros_driver.setCameraParams(camParams);
-	uvc_ros_driver.setHomographyMapping(homography_mapping);
+	uvc_ros_driver.setCalibrationParam(0);
+	uvc_ros_driver.setUseOfDepthMap(0);
+	uvc_ros_driver.setCalibrationMode(false);
 
 	// start device
 	uvc_ros_driver.startDevice();

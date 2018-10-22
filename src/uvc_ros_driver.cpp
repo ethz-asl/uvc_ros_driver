@@ -142,11 +142,6 @@ void uvcROSDriver::initDevice() {
         nh_.advertise<sensor_msgs::CameraInfo>(topic + "camera_info", 1000));
 
     if (i % 2) {
-      cam_rect_pubs_.emplace_back(
-          it_.advertise(prev_topic + "image_rect", kCamQueueSize));
-      cam_disp_pubs_.emplace_back(
-          it_.advertise(prev_topic + "image_depth", kCamQueueSize));
-
       imu_pubs_.emplace_back(
           nh_.advertise<sensor_msgs::Imu>(prev_topic + "imu", kIMUQueueSize));
       imu_pubs_.emplace_back(
@@ -159,11 +154,6 @@ void uvcROSDriver::initDevice() {
       nh_.advertise<sensor_msgs::Imu>("adis_imu", kIMUQueueSize));
 
   info_cams_.resize(n_cameras_);
-
-  pointcloud_pub_ =
-      nh_.advertise<sensor_msgs::PointCloud2>("pointcloud", kCamQueueSize);
-  freespace_pointcloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(
-      "freespace_pointcloud", kCamQueueSize);
 
   // time translator
   constexpr int kSecondsToMicroSeconds = 1e6;
@@ -221,7 +211,6 @@ void uvcROSDriver::initDevice() {
 
 void uvcROSDriver::startDevice() {
   if (device_initialized_) {
-    setCalibration(camera_params_);
 
     // open uvc stream
     uvc_error_t res = initAndOpenUvc();
@@ -235,7 +224,6 @@ void uvcROSDriver::startDevice() {
     res = uvc_start_streaming(devh_, &ctrl_, &callback, this, 0);
 
     setParam("CAMERA_ENABLE", static_cast<float>(buildCameraConfig()));
-    setCalibration(camera_params_);
 
     printf("Waiting on stream");
     while (!uvc_cb_flag_ && ros::ok()) {
@@ -289,183 +277,6 @@ int uvcROSDriver::setParam(const std::string &name, float val) {
   }
 
   return 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void uvcROSDriver::sendCameraParam(
-    const int camera_number, const uvc_ros_driver::DistortionModelTypes dtype,
-    const double fx, const double fy, const Eigen::Vector2d &p0, const float k1,
-    const float k2, const float r1, const float r2, const Eigen::Matrix3d &H) {
-  std::string camera_name = "CAM" + std::to_string(camera_number);
-
-  setParam("PARAM_DM_" + camera_name, static_cast<float>(dtype));
-  setParam("PARAM_CCX_" + camera_name, p0[0]);
-  setParam("PARAM_CCY_" + camera_name, p0[1]);
-  setParam("PARAM_FCX_" + camera_name, fx);
-  setParam("PARAM_FCY_" + camera_name, fy);
-  setParam("PARAM_KC1_" + camera_name, k1);
-  setParam("PARAM_KC2_" + camera_name, k2);
-  setParam("PARAM_KC3_" + camera_name, r1);
-  setParam("PARAM_KC4_" + camera_name, r2);
-  setParam("PARAM_P1_" + camera_name, r1);
-  setParam("PARAM_P2_" + camera_name, r2);
-  setParam("PARAM_H11_" + camera_name, H(0, 0));
-  setParam("PARAM_H12_" + camera_name, H(0, 1));
-  setParam("PARAM_H13_" + camera_name, H(0, 2));
-  setParam("PARAM_H21_" + camera_name, H(1, 0));
-  setParam("PARAM_H22_" + camera_name, H(1, 1));
-  setParam("PARAM_H23_" + camera_name, H(1, 2));
-  setParam("PARAM_H31_" + camera_name, H(2, 0));
-  setParam("PARAM_H32_" + camera_name, H(2, 1));
-  setParam("PARAM_H33_" + camera_name, H(2, 2));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void uvcROSDriver::setCalibration(CameraParameters camParams) {
-  std::vector<uvc_ros_driver::FPGACalibration> cams;
-  int stereo_number = 0;
-
-  if (camParams.isValid) {
-    // TODO: find better way for this, general case not only stereo between
-    // cam0->cam1, cam2->cam3
-    for (int cam = 0; cam < n_cameras_; cam++) {
-      uvc_ros_driver::FPGACalibration camera;
-      camera.projection_model_.projection_type_ =
-          uvc_ros_driver::ProjectionModelTypes::PINHOLE;
-      camera.projection_model_.distortion_type_ =
-          static_cast<uvc_ros_driver::DistortionModelTypes>(
-              camParams.DistortionModel[cam]);
-      camera.projection_model_.focal_length_u_ = camParams.FocalLength[cam][0];
-      camera.projection_model_.focal_length_v_ = camParams.FocalLength[cam][1];
-      camera.projection_model_.principal_point_u_ =
-          camParams.PrincipalPoint[cam][0];
-      camera.projection_model_.principal_point_v_ =
-          camParams.PrincipalPoint[cam][1];
-      camera.projection_model_.k1_ = camParams.DistortionCoeffs[cam][0];
-      camera.projection_model_.k2_ = camParams.DistortionCoeffs[cam][1];
-      camera.projection_model_.r1_ = camParams.DistortionCoeffs[cam][2];
-      camera.projection_model_.r2_ = camParams.DistortionCoeffs[cam][3];
-
-      if (cam % 2 != 0) {
-        camera.projection_model_.R_[0] =
-            camParams.StereoTransformationMatrix[stereo_number][0][0];
-        camera.projection_model_.R_[1] =
-            camParams.StereoTransformationMatrix[stereo_number][0][1];
-        camera.projection_model_.R_[2] =
-            camParams.StereoTransformationMatrix[stereo_number][0][2];
-        camera.projection_model_.R_[3] =
-            camParams.StereoTransformationMatrix[stereo_number][1][0];
-        camera.projection_model_.R_[4] =
-            camParams.StereoTransformationMatrix[stereo_number][1][1];
-        camera.projection_model_.R_[5] =
-            camParams.StereoTransformationMatrix[stereo_number][1][2];
-        camera.projection_model_.R_[6] =
-            camParams.StereoTransformationMatrix[stereo_number][2][0];
-        camera.projection_model_.R_[7] =
-            camParams.StereoTransformationMatrix[stereo_number][2][1];
-        camera.projection_model_.R_[8] =
-            camParams.StereoTransformationMatrix[stereo_number][2][2];
-        camera.projection_model_.t_[0] =
-            camParams.StereoTransformationMatrix[stereo_number][0][3];
-        camera.projection_model_.t_[1] =
-            camParams.StereoTransformationMatrix[stereo_number][1][3];
-        camera.projection_model_.t_[2] =
-            camParams.StereoTransformationMatrix[stereo_number][2][3];
-        stereo_number++;
-
-      } else {
-        camera.projection_model_.R_[0] = 1.0f;
-        camera.projection_model_.R_[1] = 0.0f;
-        camera.projection_model_.R_[2] = 0.0f;
-        camera.projection_model_.R_[3] = 0.0f;
-        camera.projection_model_.R_[4] = 1.0f;
-        camera.projection_model_.R_[5] = 0.0f;
-        camera.projection_model_.R_[6] = 0.0f;
-        camera.projection_model_.R_[7] = 0.0f;
-        camera.projection_model_.R_[8] = 1.0f;
-        camera.projection_model_.t_[0] = 0.0f;
-        camera.projection_model_.t_[1] = 0.0f;
-        camera.projection_model_.t_[2] = 0.0f;
-      }
-
-      cams.push_back(camera);
-    }
-
-    // initialize vectors
-    f_.resize(n_cameras_);
-    p_.resize(n_cameras_);
-    H_.resize(n_cameras_);
-    // pointer at camera info
-    sensor_msgs::CameraInfo *ci;
-    size_t homography_size;
-
-    // TODO: reimplment this part for multiple stereo base line based systems
-    if (set_calibration_) {
-      std::vector<std::pair<int, int> >::iterator it_homography =
-          std::max_element(homography_mapping_.begin(),
-                           homography_mapping_.end(), myPairMax);
-
-      // set homography number to number of camera pairs for now
-      homography_size = n_cameras_ / 2;
-
-      for (size_t i = 0; i < homography_size; i++) {
-        // temp structures
-        Eigen::Matrix3d H0;
-        Eigen::Matrix3d H1;
-        double f_new;
-        Eigen::Vector2d p0_new, p1_new;
-
-        std::pair<int, int> indx = homography_mapping_[i];
-
-        // hack for now do cleaner later
-        double zoom = -100;
-
-        StereoHomography h(cams[indx.first], cams[indx.second]);
-        h.getHomography(H0, H1, f_new, p0_new, p1_new, zoom);
-
-        f_[indx.first] = f_new;
-        f_[indx.second] = f_new;
-        p_[indx.first] = p0_new;
-        p_[indx.second] = p1_new;
-        // TODO check if matrix is copied or only pointer!!
-        H_[indx.first] = H0;
-        H_[indx.second] = H1;
-      }
-
-      // Set all parameters here
-      for (int i = 0; i < n_cameras_; i++) {
-        sendCameraParam(i, cams[i].projection_model_.distortion_type_, f_[i],
-                        f_[i], p_[i], cams[i].projection_model_.k1_,
-                        cams[i].projection_model_.k2_,
-                        cams[i].projection_model_.r1_,
-                        cams[i].projection_model_.r2_, H_[i]);
-        setCameraInfoIntrinsics(info_cams_[i], f_[i], f_[i], p_[i](0),
-                                p_[i](1));
-        setCameraInfoDistortionMdl(
-            info_cams_[i], uvc_ros_driver::ProjectionModelTypes::PINHOLE);
-        setCameraInfoDistortionParams(info_cams_[i], 0, 0, 0, 0, 0);
-      }
-
-    } else {
-      for (int i = 0; i < n_cameras_; i++) {
-        setCameraInfoIntrinsics(info_cams_[i], camParams.FocalLength[i][0],
-                                camParams.FocalLength[i][1],
-                                camParams.PrincipalPoint[i][0],
-                                camParams.PrincipalPoint[i][1]);
-        setCameraInfoDistortionMdl(
-            info_cams_[i], uvc_ros_driver::ProjectionModelTypes::PINHOLE);
-        setCameraInfoDistortionParams(
-            info_cams_[i], cams[i].projection_model_.k1_,
-            cams[i].projection_model_.k2_, cams[i].projection_model_.r1_,
-            cams[i].projection_model_.r2_, 0);
-      }
-    }
-  }
-
-  setParam("RESETMT9V034", 1.0f);
-  setParam("RESETICM20608", 1.0f);
 }
 
 void uvcROSDriver::dynamicReconfigureCallback(
@@ -1106,52 +917,11 @@ void uvcROSDriver::uvc_cb(uvc_frame_t *frame) {
 
     cam_raw_pubs_[cam_id.left_cam_num].publish(msg_left_image);
     cam_raw_pubs_[cam_id.right_cam_num].publish(msg_right_image);
-  } else {
-    msg_left_image.header.frame_id =
-        "cam_" + std::to_string(cam_id.left_cam_num) + "_corrected_frame";
-    msg_right_image.header.frame_id =
-        "cam_" + std::to_string(cam_id.right_cam_num) + "_disparity_frame";
-
-    // publish images
-    cam_rect_pubs_[cam_id.left_cam_num / 2].publish(msg_left_image);
-    cam_disp_pubs_[cam_id.right_cam_num / 2].publish(msg_right_image);
-
-    if (gen_pointcloud_) {
-      pcl::PointCloud<pcl::PointXYZRGB> pointcloud, freespace_pointcloud;
-      calcPointCloud(images[1], images[0], cam_id.left_cam_num, &pointcloud,
-                     &freespace_pointcloud);
-
-      sensor_msgs::PointCloud2 pointcloud_msg;
-      pcl::toROSMsg(pointcloud, pointcloud_msg);
-      pointcloud_msg.header = msg_left_image.header;
-      pointcloud_pub_.publish(pointcloud_msg);
-
-      sensor_msgs::PointCloud2 freespace_pointcloud_msg;
-      pcl::toROSMsg(freespace_pointcloud, freespace_pointcloud_msg);
-      freespace_pointcloud_msg.header = msg_left_image.header;
-      freespace_pointcloud_pub_.publish(freespace_pointcloud_msg);
-    }
   }
 
   setCameraInfoHeader(info_cams_[cam_id.left_cam_num], width_, height_,
                       frame_time, msg_left_image.header.frame_id);
   cam_info_pubs_[cam_id.left_cam_num].publish(info_cams_[cam_id.left_cam_num]);
-
-  br_.sendTransform(
-      tf::StampedTransform(camera_params_.T_cam_imu[cam_id.left_cam_num],
-                           frame_time, "imu", msg_left_image.header.frame_id));
-
-  if (cam_id.is_raw_images) {
-    setCameraInfoHeader(info_cams_[cam_id.right_cam_num], width_, height_,
-                        frame_time, msg_right_image.header.frame_id);
-
-    cam_info_pubs_[cam_id.right_cam_num].publish(
-        info_cams_[cam_id.right_cam_num]);
-
-    br_.sendTransform(tf::StampedTransform(
-        camera_params_.T_cam_imu[cam_id.right_cam_num], frame_time, "imu",
-        msg_right_image.header.frame_id));
-  }
 
   static uint8_t prev_count = 0;
 
